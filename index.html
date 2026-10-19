@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MPT & DPA | Power Redundancy Situational Awareness Simulator</title>
+<title>MPT & DPA | Power Redundancy Simulator</title>
 <style>
   :root {
     --bg: #050911;
@@ -165,8 +165,8 @@
 <body>
 
 <div class="header">
-  <h1>MPT & DPA Graduate Engineering – Power Redundancy Situational Awareness</h1>
-  <div class="tag">LIVE SCADA / EPMS MIMIC: N | N+1 | 2N | 2N+1 | 3N/2 | 3N+2</div>
+  <h1>MPT & DPA – Power Redundancy Simulator</h1>
+  <div class="tag">INTERACTIVE SIMULATOR: N | N+1 | 2N | 2N+1 | 3N/2</div>
 </div>
 
 <div class="tabs" id="tabs"></div>
@@ -203,7 +203,7 @@
   <!-- RIGHT SITUATIONAL AWARENESS SLD -->
   <div class="card">
     <div class="card-title">
-      <span>Live single-line mimic diagram (SCADA situational awareness view)</span>
+      <span>Live power diagram</span>
       <span style="font-size:0.75rem; color:var(--muted); font-weight:500;">Animated current flow & breaker status</span>
     </div>
 
@@ -271,7 +271,7 @@ const CONFIGS = {
     mode: "dual_path",
     notes: [
       "Dual independent paths: Path A and Path B each carry 500 kW normally, so each 500 kW UPS module loafs along at 250 kW (50% load).",
-      "Concurrent path maintenance: isolate the entire Path A busbar – the blue/green lines on Path A go dark, breaker contacts open, and Path B seamlessly carries 1000 kW (100% load).",
+      "Concurrent path maintenance: isolate the entire Path A busbar – the lines on Path A go dark, breaker contacts open, and Path B seamlessly carries 1000 kW (100% load).",
       "Vulnerability during path failure: if Path A is down AND you lose one UPS on Path B, the single remaining B-side UPS sees 1000 kW (200%) and trips!"
     ]
   },
@@ -310,22 +310,6 @@ const CONFIGS = {
       "Interwoven copper geometry: standard servers only have 2 cords, so we split the 1000 kW hall into 3 zones (333.3 kW each) wired to A+B, B+C, and C+A.",
       "Normal operation: each 500 kW UPS feeds two half-zones (166.7 kW + 166.7 kW = 333.3 kW, or 66.7% load).",
       "Failover physics: fault any 1 UPS or isolate any 1 path – the affected zones shift their draw onto the remaining 2 paths, bringing the two surviving UPS systems to exactly 500 kW (100% load)."
-    ]
-  },
-  "3N+2": {
-    name: "3N+2 (N+2 where N=3) – 3 active + 2 spares (5 modules, 1 path)",
-    itLoad: 1500, nNeeded: 3, unitCap: 500,
-    ups: [
-      {id:"UPS 1", path:0}, {id:"UPS 2", path:0}, {id:"UPS 3", path:0},
-      {id:"UPS 4 (+1)", path:0}, {id:"UPS 5 (+2)", path:0}
-    ],
-    paths: [{id:"Common parallel bus", sub:"5 modules on 1 path"}],
-    racks: [{id:"Data hall racks (1500 kW single path)", feeds:[0], kw:1500}],
-    mode: "single_bus",
-    notes: [
-      "Scaling N to 3 units (1500 kW load): 3 active 500 kW units are needed for the load, plus 2 redundant units on the same busbar (2500 kW total installed).",
-      "Surviving a fault during maintenance: put UPS 5 into maintenance (4 units run at 375 kW / 75%), then trip UPS 4 – the remaining 3 units step up to 500 kW (100%) with zero downtime.",
-      "Single path vulnerability: despite having 5 UPS modules, isolating the single common busbar still drops the entire 1500 kW hall."
     ]
   }
 };
@@ -380,7 +364,6 @@ function togglePath(idx) {
 
 function evaluateSystem() {
   const cfg = CONFIGS[currentKey];
-  // Calculate available capacity per path before overload trip
   const rawPathCap = cfg.paths.map((_, pIdx) => {
     if (pathState[pIdx] !== "ok") return 0;
     const activeUps = cfg.ups.filter((u, uIdx) => u.path === pIdx && upsState[uIdx] === "ok");
@@ -393,7 +376,6 @@ function evaluateSystem() {
   let hallStatus = "ok";
   let msg = "";
 
-  // Determine how each rack zone pulls load from its connected paths
   cfg.racks.forEach((r, rIdx) => {
     const validFeeds = r.feeds.filter(pIdx => rawPathCap[pIdx] > 0);
     rackStatus[rIdx].liveFeeds = validFeeds;
@@ -406,7 +388,6 @@ function evaluateSystem() {
     }
   });
 
-  // Distribute path load across online UPS units on that path
   let overloadTrip = false;
   cfg.paths.forEach((_, pIdx) => {
     const activeIndices = cfg.ups.map((u, i) => ({u, i})).filter(x => x.u.path === pIdx && upsState[x.i] === "ok" && pathState[pIdx] === "ok");
@@ -520,17 +501,18 @@ function drawBreaker(x, y, closed, col) {
 function drawSCADA(cfg, res) {
   const svg = document.getElementById("sld");
   const W = 900;
+  // filterUnits="userSpaceOnUse" prevents zero-width bounding box clipping on purely vertical feeders
   let html = `
     <defs>
-      <filter id="glow-green" x="-30%" y="-30%" width="160%" height="160%">
+      <filter id="glow-green" filterUnits="userSpaceOnUse" x="-50" y="-50" width="1000" height="600">
         <feGaussianBlur stdDeviation="4" result="blur"/>
         <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
-      <filter id="glow-amber" x="-30%" y="-30%" width="160%" height="160%">
+      <filter id="glow-amber" filterUnits="userSpaceOnUse" x="-50" y="-50" width="1000" height="600">
         <feGaussianBlur stdDeviation="4.5" result="blur"/>
         <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
-      <filter id="glow-red" x="-30%" y="-30%" width="160%" height="160%">
+      <filter id="glow-red" filterUnits="userSpaceOnUse" x="-50" y="-50" width="1000" height="600">
         <feGaussianBlur stdDeviation="5" result="blur"/>
         <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
@@ -589,7 +571,6 @@ function drawSCADA(cfg, res) {
       const pKw = res.pathLoads[pIdx];
       const isLive = pathState[pIdx] === "ok" && pKw > 0 && !res.overloadTrip && res.rackStatus[rIdx].liveFeeds.includes(pIdx);
 
-      // Check if any UPS on this path is >85%
       const highLoad = cfg.ups.some((u, ui) => u.path === pIdx && (res.upsLoads[ui] / cfg.unitCap) >= 0.85);
       const col = isLive ? (highLoad ? "var(--amber)" : "var(--cyan)") : "#1e2c45";
       const glow = isLive ? (highLoad ? "url(#glow-amber)" : "url(#glow-green)") : "";
@@ -638,7 +619,7 @@ function drawSCADA(cfg, res) {
       </g>`;
   });
 
-  // 4. Draw Busbar / Distribution Path Nodes (Dynamic width so text NEVER overruns)
+  // 4. Draw Busbar / Distribution Path Nodes
   cfg.paths.forEach((p, i) => {
     const px = pathX[i];
     const st = pathState[i];
@@ -656,14 +637,13 @@ function drawSCADA(cfg, res) {
       glow = highLoad ? "url(#glow-amber)" : "url(#glow-green)";
     }
 
-    const line1 = `${p.id} — ${isLive ? kw.toFixed(0) + ' kW' : '0 kW'}`;
+    const line1 = `${p.id} – ${isLive ? kw.toFixed(0) + ' kW' : '0 kW'}`;
     const line2 = st === "ok" ? p.sub : "LOCKED OUT / FAULTED";
     const boxW = Math.max(215, Math.max(line1.length, line2.length) * 7.5 + 34);
     const boxH = 54;
 
     html += `
       <g>
-        <!-- Busbar copper rail highlight -->
         <line x1="${px - boxW/2 - 14}" y1="${yBus}" x2="${px + boxW/2 + 14}" y2="${yBus}" stroke="${col}" stroke-width="6" stroke-linecap="round" filter="${glow}"/>
         <rect x="${px - boxW/2}" y="${yBus - boxH/2}" width="${boxW}" height="${boxH}" rx="6" fill="#0b1629" stroke="${col}" stroke-width="2.2" filter="${glow}"/>
         <text x="${px}" y="${yBus - 5}" fill="#fff" font-size="12.5" font-weight="700" text-anchor="middle">${line1}</text>
@@ -689,7 +669,6 @@ function drawSCADA(cfg, res) {
     const rw = Math.max(230, r.id.length * 7.5 + 40);
     const rh = 64;
 
-    // Draw A/B PDU input pills on top of rack zone
     if (r.feeds.length > 1) {
       r.feeds.forEach((pIdx, fPos) => {
         const ox = fPos === 0 ? rx - 35 : rx + 35;
@@ -717,7 +696,7 @@ const QUIZZES = [
   { q: "Scenario 1: The data hall IT load is 1000 kW. Each UPS module is rated at 500 kW. In the plant room you count 3 UPS modules all feeding 1 single distribution path to the racks.", ans: "N+1", exp: "Correct! Needed units N = 2 (1000 kW / 500 kW). Installed = 3 units on 1 path, so it is N+1. It survives 1 UPS failing, but does not survive path maintenance." },
   { q: "Scenario 2: The data hall IT load is 1000 kW (needs two 500 kW modules). You count 4 UPS modules split across 2 completely separate A and B rooms feeding dual-corded servers.", ans: "2N", exp: "Spot on! Needed N = 2, installed = 4 across two independent paths (2 on A, 2 on B). This is 2N and survives a complete path failure or path maintenance." },
   { q: "Scenario 3: The data hall IT load is 1000 kW (needs two 500 kW modules). You count 5 UPS modules split across Path A (3 modules) and Path B (2 modules).", ans: "2N+1", exp: "Exact match! 5 modules across two paths where N = 2 gives you 2N+1." },
-  { q: "Scenario 4: The data hall IT load is 1500 kW (needs three 500 kW modules). You count 5 UPS modules all paralleled onto a single shared busbar.", ans: "3N+2", exp: "Well done! Since the 1500 kW load requires N = 3 modules and you have 2 extra spare modules on that bus, you have 3N+2 (or N+2 where N=3)." }
+  { q: "Scenario 4: The data hall IT load is 1000 kW (needs two 500 kW modules). You count 3 independent 500 kW UPS systems feeding 3 separate paths (A, B, and C) woven across three dual-corded rack zones.", ans: "3N/2", exp: "Well done! 3 independent 500 kW systems carrying a 1000 kW load across interwoven dual-corded rack zones is a 3-for-2 (3N/2) distributed redundant topology." }
 ];
 let qIdx = 0;
 
@@ -735,7 +714,7 @@ function loadQuiz() {
   document.getElementById("quiz-feedback").textContent = "";
   const bCont = document.getElementById("quiz-buttons");
   bCont.innerHTML = "";
-  ["N", "N+1", "2N", "2N+1", "3N/2", "3N+2"].forEach(opt => {
+  ["N", "N+1", "2N", "2N+1", "3N/2"].forEach(opt => {
     const b = document.createElement("button");
     b.className = "tab";
     b.textContent = opt;
