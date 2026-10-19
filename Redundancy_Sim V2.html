@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en-ZA">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MPT & DPA | Power Redundancy Situational Awareness Simulator</title>
+<style>
+  :root {
+    --bg: #050911;
+    --panel: #0b1322;
+    --panel-alt: #0f1a2e;
+    --border: #1e2d4a;
+    --text: #e2e8f0;
+    --muted: #8b9bb4;
+    --green: #00f59b;
+    --cyan: #00d2ff;
+    --amber: #ffb800;
+    --red: #ff3b5c;
+    --dead: #25334d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+  body { background: var(--bg); color: var(--text); padding: 18px; line-height: 1.45; }
+  
+  .header {
+    display: flex; justify-content: space-between; align-items: center;
+    background: linear-gradient(90deg, #0b1528 0%, #0f1e38 100%);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 20px; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  }
+  .header h1 { font-size: 1.25rem; font-weight: 700; color: #fff; letter-spacing: 0.3px; }
+  .header .tag {
+    font-size: 0.8rem; color: var(--cyan); background: rgba(0, 210, 255, 0.08);
+    padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(0, 210, 255, 0.3);
+    font-weight: 600;
+  }
+
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .tab {
+    background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+    padding: 9px 16px; border-radius: 6px; cursor: pointer; font-weight: 600;
+    font-size: 0.86rem; transition: all 0.2s ease;
+  }
+  .tab:hover { border-color: var(--cyan); color: #fff; }
+  .tab.active {
+    background: rgba(0, 210, 255, 0.14); color: #fff; border-color: var(--cyan);
+    box-shadow: 0 0 12px rgba(0, 210, 255, 0.25);
+  }
+
+  .grid { display: grid; grid-template-columns: 1fr 1.35fr; gap: 18px; align-items: start; }
+  @media (max-width: 1150px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+  }
+  .card-title {
+    font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; color: #fff;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border); padding-bottom: 8px;
+  }
+
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+  .metric {
+    background: var(--panel-alt); border: 1px solid var(--border);
+    padding: 9px 6px; border-radius: 6px; text-align: center;
+  }
+  .metric .lbl { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .metric .val { font-size: 1.1rem; font-weight: 700; margin-top: 3px; color: #fff; }
+
+  .status-banner {
+    padding: 11px 14px; border-radius: 6px; font-weight: 600;
+    margin-bottom: 14px; font-size: 0.88rem; display: flex; align-items: center; gap: 10px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .s-ok { background: rgba(0, 245, 155, 0.1); border: 1px solid var(--green); color: #80ffce; }
+  .s-ok .dot { background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .s-warn { background: rgba(255, 184, 0, 0.12); border: 1px solid var(--amber); color: #ffe082; }
+  .s-warn .dot { background: var(--amber); box-shadow: 0 0 10px var(--amber); }
+  .s-err { background: rgba(255, 59, 92, 0.15); border: 1px solid var(--red); color: #ff99aa; }
+  .s-err .dot { background: var(--red); box-shadow: 0 0 12px var(--red); }
+
+  .section-lbl { font-size: 0.8rem; color: var(--muted); margin: 10px 0 8px; font-weight: 600; }
+  .ups-list, .path-list {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+    gap: 8px; margin-bottom: 12px;
+  }
+  .unit {
+    background: var(--panel-alt); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px; transition: 0.2s;
+  }
+  .unit.online { border-color: rgba(0, 245, 155, 0.5); box-shadow: inset 0 0 12px rgba(0, 245, 155, 0.05); }
+  .unit.warn { border-color: var(--amber); box-shadow: inset 0 0 14px rgba(255, 184, 0, 0.08); }
+  .unit.fault { border-color: var(--red); box-shadow: inset 0 0 14px rgba(255, 59, 92, 0.1); opacity: 0.9; }
+  .unit.isolated { border-color: var(--dead); opacity: 0.7; }
+
+  .unit-head { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 0.82rem; margin-bottom: 5px; }
+  .badge { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; font-weight: 700; letter-spacing: 0.4px; }
+  .b-ok { background: rgba(0, 245, 155, 0.15); color: var(--green); }
+  .b-warn { background: rgba(255, 184, 0, 0.2); color: var(--amber); }
+  .b-err { background: rgba(255, 59, 92, 0.2); color: var(--red); }
+  .b-iso { background: rgba(148, 163, 184, 0.15); color: var(--muted); }
+
+  .bar-bg { width: 100%; height: 7px; background: #060b14; border-radius: 4px; overflow: hidden; margin: 6px 0; border: 1px solid #1a2740; }
+  .bar-fill { height: 100%; transition: width 0.35s ease, background 0.35s ease; }
+
+  .btn-row { display: flex; gap: 5px; margin-top: 7px; }
+  .btn {
+    flex: 1; padding: 5px 6px; font-size: 0.72rem; border-radius: 4px;
+    border: 1px solid var(--border); background: #132038; color: var(--text);
+    cursor: pointer; font-weight: 600; transition: 0.15s;
+  }
+  .btn:hover { border-color: var(--cyan); color: #fff; }
+  .btn.active-fault { background: var(--red); color: #fff; border-color: var(--red); box-shadow: 0 0 8px rgba(255,59,92,0.5); }
+  .btn.active-maint { background: var(--amber); color: #000; border-color: var(--amber); box-shadow: 0 0 8px rgba(255,184,0,0.5); }
+
+  /* Situational Awareness SLD Canvas */
+  .sld-wrap {
+    position: relative; border-radius: 8px; overflow: hidden;
+    border: 1px solid #1e3252; margin-bottom: 12px;
+    background-color: #040811;
+    background-image: 
+      radial-gradient(rgba(0, 210, 255, 0.08) 1px, transparent 1px),
+      linear-gradient(to right, rgba(30, 45, 74, 0.22) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(30, 45, 74, 0.22) 1px, transparent 1px);
+    background-size: 20px 20px, 40px 40px, 40px 40px;
+  }
+  svg { width: 100%; height: auto; display: block; }
+
+  @keyframes powerFlow {
+    from { stroke-dashoffset: 28; }
+    to { stroke-dashoffset: 0; }
+  }
+  @keyframes pulseFault {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  .flow-line {
+    stroke-dasharray: 6 8;
+    animation: powerFlow 0.75s linear infinite;
+  }
+  .flow-fast {
+    stroke-dasharray: 7 7;
+    animation: powerFlow 0.38s linear infinite;
+  }
+  .fault-pulse {
+    animation: pulseFault 0.9s ease-in-out infinite;
+  }
+
+  .legend {
+    display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.75rem;
+    color: var(--muted); padding: 8px 12px; background: #070d19;
+    border-top: 1px solid var(--border);
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .l-box { width: 12px; height: 4px; border-radius: 2px; }
+
+  .info-box p { font-size: 0.86rem; color: #fff; margin-bottom: 8px; }
+  .info-box ul { padding-left: 18px; font-size: 0.82rem; color: var(--muted); }
+  .info-box li { margin-bottom: 6px; }
+  .quiz-box { display: none; }
+  .quiz-opts { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>MPT & DPA Graduate Engineering – Power Redundancy Situational Awareness</h1>
+  <div class="tag">LIVE SCADA / EPMS MIMIC: N | N+1 | 2N | 2N+1 | 3N/2 | 3N+2</div>
+</div>
+
+<div class="tabs" id="tabs"></div>
+
+<div id="sim-view" class="grid">
+  <!-- LEFT CONTROL PANEL -->
+  <div class="card">
+    <div class="card-title">
+      <span id="cfg-title">Configuration</span>
+      <button class="btn" style="flex:0 0 auto; padding:4px 12px;" onclick="resetState()">Reset all breakers</button>
+    </div>
+
+    <div id="banner" class="status-banner s-ok">
+      <div class="dot"></div>
+      <div id="banner-txt">System normal</div>
+    </div>
+
+    <div class="metrics">
+      <div class="metric"><div class="lbl">Critical IT load</div><div class="val" id="m-load">1000 kW</div></div>
+      <div class="metric"><div class="lbl">Needed units (N)</div><div class="val" id="m-n">2</div></div>
+      <div class="metric"><div class="lbl">Installed plant</div><div class="val" id="m-cap">1000 kW</div></div>
+      <div class="metric"><div class="lbl">Active paths</div><div class="val" id="m-paths">1 path</div></div>
+    </div>
+
+    <div class="section-lbl">1. UPS modules (500 kW rating per module – click to trip fault or isolate for maintenance)</div>
+    <div class="ups-list" id="ups-container"></div>
+
+    <div class="section-lbl">2. Main switchboard busbars / paths (click to isolate entire path or simulate bus fault)</div>
+    <div class="path-list" id="path-container"></div>
+
+    <div class="info-box" id="info-panel" style="margin-top:14px; border-top:1px solid var(--border); padding-top:12px;"></div>
+  </div>
+
+  <!-- RIGHT SITUATIONAL AWARENESS SLD -->
+  <div class="card">
+    <div class="card-title">
+      <span>Live single-line mimic diagram (SCADA situational awareness view)</span>
+      <span style="font-size:0.75rem; color:var(--muted); font-weight:500;">Animated current flow & breaker status</span>
+    </div>
+
+    <div class="sld-wrap">
+      <svg id="sld" viewBox="0 0 900 475"></svg>
+      <div class="legend">
+        <span><i class="l-box" style="background:var(--green); box-shadow:0 0 6px var(--green);"></i> Normal load (&lt;85%)</span>
+        <span><i class="l-box" style="background:var(--amber); box-shadow:0 0 6px var(--amber);"></i> High load / failover active (85–100%)</span>
+        <span><i class="l-box" style="background:var(--red); box-shadow:0 0 6px var(--red);"></i> Fault / inverter overload trip (&gt;100%)</span>
+        <span><i class="l-box" style="background:var(--dead);"></i> De-energised / isolated</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SITE COUNTING CHALLENGE VIEW -->
+<div id="quiz-view" class="card quiz-box">
+  <div class="card-title"><span>Plant room & data hall walkdown challenge</span></div>
+  <p style="font-size:0.88rem; color:var(--muted); margin-bottom:14px;">
+    Practise the on-site inspection routine: count the installed UPS modules, work out N from the critical IT load, check whether there are single or dual A and B feeds to the racks, and identify the configuration.
+  </p>
+  <div id="quiz-scenario" class="status-banner s-warn" style="font-size:0.95rem;"><div class="dot"></div><div id="quiz-q-txt"></div></div>
+  <div class="quiz-opts" id="quiz-buttons"></div>
+  <div id="quiz-feedback" style="margin-top:12px; font-size:0.9rem; font-weight:600;"></div>
+  <button class="btn" style="margin-top:14px; padding:8px 16px; max-width:260px;" onclick="nextQuiz()">Next plant room scenario</button>
+</div>
+
+<script>
+const CONFIGS = {
+  "N": {
+    name: "N – capacity only (2 modules, 1 path)",
+    itLoad: 1000, nNeeded: 2, unitCap: 500,
+    ups: [{id:"UPS 1", path:0}, {id:"UPS 2", path:0}],
+    paths: [{id:"Single path A", sub:"Shared main busbar"}],
+    racks: [{id:"Data hall racks (single-fed)", feeds:[0], kw:1000}],
+    mode: "single_bus",
+    notes: [
+      "What N means: just enough capacity to carry the 1000 kW critical load with zero spares.",
+      "Normal operation: both 500 kW modules run at 100% full load (500 kW each) feeding one shared busbar.",
+      "Failure response: trip either UPS – the survivor is instantly hit with 1000 kW (200% load), tripping its inverter protection and blacking out the data hall."
+    ]
+  },
+  "N+1": {
+    name: "N+1 – spare unit on a single path (3 modules, 1 path)",
+    itLoad: 1000, nNeeded: 2, unitCap: 500,
+    ups: [{id:"UPS 1", path:0}, {id:"UPS 2", path:0}, {id:"UPS 3 (+1)", path:0}],
+    paths: [{id:"Single path A", sub:"Shared parallel busbar"}],
+    racks: [{id:"Data hall racks (single path)", feeds:[0], kw:1000}],
+    mode: "single_bus",
+    notes: [
+      "Load sharing: all 3 paralleled modules share the 1000 kW load equally at 333.3 kW (66.7% utilisation) each.",
+      "Component fault tolerance: trip or isolate any 1 UPS – the remaining 2 units step up to 500 kW (100%) and turn amber while keeping the racks online.",
+      "Single point of failure: click 'Isolate / fault path' on the shared busbar – because there is only one path, busbar maintenance drops the entire data hall."
+    ]
+  },
+  "2N": {
+    name: "2N – two complete independent systems (4 modules, 2 paths)",
+    itLoad: 1000, nNeeded: 2, unitCap: 500,
+    ups: [{id:"UPS A1", path:0}, {id:"UPS A2", path:0}, {id:"UPS B1", path:1}, {id:"UPS B2", path:1}],
+    paths: [{id:"Path A busbar", sub:"Feeds rack PDU A"}, {id:"Path B busbar", sub:"Feeds rack PDU B"}],
+    racks: [
+      {id:"Rack group 1 (500 kW)", feeds:[0,1], kw:500},
+      {id:"Rack group 2 (500 kW)", feeds:[0,1], kw:500}
+    ],
+    mode: "dual_path",
+    notes: [
+      "Dual independent paths: Path A and Path B each carry 500 kW normally, so each 500 kW UPS module loafs along at 250 kW (50% load).",
+      "Concurrent path maintenance: isolate the entire Path A busbar – the blue/green lines on Path A go dark, breaker contacts open, and Path B seamlessly carries 1000 kW (100% load).",
+      "Vulnerability during path failure: if Path A is down AND you lose one UPS on Path B, the single remaining B-side UPS sees 1000 kW (200%) and trips!"
+    ]
+  },
+  "2N+1": {
+    name: "2N+1 – two paths plus a spare module (5 modules, 2 paths)",
+    itLoad: 1000, nNeeded: 2, unitCap: 500,
+    ups: [{id:"UPS A1", path:0}, {id:"UPS A2", path:0}, {id:"UPS A3 (+1)", path:0}, {id:"UPS B1", path:1}, {id:"UPS B2", path:1}],
+    paths: [{id:"Path A (N+1 bus)", sub:"3 modules installed"}, {id:"Path B (N bus)", sub:"2 modules installed"}],
+    racks: [
+      {id:"Rack group 1 (500 kW)", feeds:[0,1], kw:500},
+      {id:"Rack group 2 (500 kW)", feeds:[0,1], kw:500}
+    ],
+    mode: "dual_path",
+    notes: [
+      "Worked example layout: 5 modules across two paths (3 modules on Path A, 2 modules on Path B).",
+      "Why it matters operationally: you can place UPS A3 into maintenance and still have 2 active modules (1000 kW) on Path A and 2 active modules (1000 kW) on Path B.",
+      "Try it: isolate UPS A3 for maintenance, then fault the entire Path B busbar – Path A still carries the full 1000 kW load without tripping!"
+    ]
+  },
+  "3N/2": {
+    name: "3N/2 (3-for-2) – interwoven distributed matrix (3 modules, 3 paths, 3 zones)",
+    itLoad: 1000, nNeeded: 2, unitCap: 500,
+    ups: [{id:"UPS 1 (Sys A)", path:0}, {id:"UPS 2 (Sys B)", path:1}, {id:"UPS 3 (Sys C)", path:2}],
+    paths: [
+      {id:"Path A busbar", sub:"Feeds Zones X & Z"},
+      {id:"Path B busbar", sub:"Feeds Zones X & Y"},
+      {id:"Path C busbar", sub:"Feeds Zones Y & Z"}
+    ],
+    racks: [
+      {id:"Zone X (333 kW)", feeds:[0,1], kw:333.3},
+      {id:"Zone Y (333 kW)", feeds:[1,2], kw:333.3},
+      {id:"Zone Z (333 kW)", feeds:[2,0], kw:333.3}
+    ],
+    mode: "three_for_two",
+    notes: [
+      "Interwoven copper geometry: standard servers only have 2 cords, so we split the 1000 kW hall into 3 zones (333.3 kW each) wired to A+B, B+C, and C+A.",
+      "Normal operation: each 500 kW UPS feeds two half-zones (166.7 kW + 166.7 kW = 333.3 kW, or 66.7% load).",
+      "Failover physics: fault any 1 UPS or isolate any 1 path – the affected zones shift their draw onto the remaining 2 paths, bringing the two surviving UPS systems to exactly 500 kW (100% load)."
+    ]
+  },
+  "3N+2": {
+    name: "3N+2 (N+2 where N=3) – 3 active + 2 spares (5 modules, 1 path)",
+    itLoad: 1500, nNeeded: 3, unitCap: 500,
+    ups: [
+      {id:"UPS 1", path:0}, {id:"UPS 2", path:0}, {id:"UPS 3", path:0},
+      {id:"UPS 4 (+1)", path:0}, {id:"UPS 5 (+2)", path:0}
+    ],
+    paths: [{id:"Common parallel bus", sub:"5 modules on 1 path"}],
+    racks: [{id:"Data hall racks (1500 kW single path)", feeds:[0], kw:1500}],
+    mode: "single_bus",
+    notes: [
+      "Scaling N to 3 units (1500 kW load): 3 active 500 kW units are needed for the load, plus 2 redundant units on the same busbar (2500 kW total installed).",
+      "Surviving a fault during maintenance: put UPS 5 into maintenance (4 units run at 375 kW / 75%), then trip UPS 4 – the remaining 3 units step up to 500 kW (100%) with zero downtime.",
+      "Single path vulnerability: despite having 5 UPS modules, isolating the single common busbar still drops the entire 1500 kW hall."
+    ]
+  }
+};
+
+let currentKey = "N";
+let upsState = [];
+let pathState = [];
+
+function initTabs() {
+  const t = document.getElementById("tabs");
+  Object.keys(CONFIGS).forEach(k => {
+    const b = document.createElement("button");
+    b.className = "tab" + (k === currentKey ? " active" : "");
+    b.textContent = k;
+    b.onclick = () => selectTab(k, b);
+    t.appendChild(b);
+  });
+  const q = document.createElement("button");
+  q.className = "tab";
+  q.style.borderColor = "var(--amber)";
+  q.style.color = "var(--amber)";
+  q.textContent = "Site walkdown challenge";
+  q.onclick = () => showQuiz(q);
+  t.appendChild(q);
+}
+
+function selectTab(k, btn) {
+  document.querySelectorAll(".tab").forEach(el => el.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById("quiz-view").style.display = "none";
+  document.getElementById("sim-view").style.display = "grid";
+  currentKey = k;
+  resetState();
+}
+
+function resetState() {
+  const cfg = CONFIGS[currentKey];
+  upsState = cfg.ups.map(() => "ok");
+  pathState = cfg.paths.map(() => "ok");
+  render();
+}
+
+function toggleUps(idx, type) {
+  upsState[idx] = (upsState[idx] === type) ? "ok" : type;
+  render();
+}
+
+function togglePath(idx) {
+  pathState[idx] = (pathState[idx] === "ok") ? "maint" : "ok";
+  render();
+}
+
+function evaluateSystem() {
+  const cfg = CONFIGS[currentKey];
+  // Calculate available capacity per path before overload trip
+  const rawPathCap = cfg.paths.map((_, pIdx) => {
+    if (pathState[pIdx] !== "ok") return 0;
+    const activeUps = cfg.ups.filter((u, uIdx) => u.path === pIdx && upsState[uIdx] === "ok");
+    return activeUps.length * cfg.unitCap;
+  });
+
+  let upsLoads = cfg.ups.map(() => 0);
+  let pathLoads = cfg.paths.map(() => 0);
+  let rackStatus = cfg.racks.map(() => ({ ok: true, liveFeeds: [] }));
+  let hallStatus = "ok";
+  let msg = "";
+
+  // Determine how each rack zone pulls load from its connected paths
+  cfg.racks.forEach((r, rIdx) => {
+    const validFeeds = r.feeds.filter(pIdx => rawPathCap[pIdx] > 0);
+    rackStatus[rIdx].liveFeeds = validFeeds;
+    if (validFeeds.length === 0) {
+      rackStatus[rIdx].ok = false;
+      hallStatus = "err";
+    } else {
+      const share = r.kw / validFeeds.length;
+      validFeeds.forEach(pIdx => { pathLoads[pIdx] += share; });
+    }
+  });
+
+  // Distribute path load across online UPS units on that path
+  let overloadTrip = false;
+  cfg.paths.forEach((_, pIdx) => {
+    const activeIndices = cfg.ups.map((u, i) => ({u, i})).filter(x => x.u.path === pIdx && upsState[x.i] === "ok" && pathState[pIdx] === "ok");
+    if (activeIndices.length > 0 && pathLoads[pIdx] > 0) {
+      const lpu = pathLoads[pIdx] / activeIndices.length;
+      activeIndices.forEach(x => { upsLoads[x.i] = lpu; });
+      if (lpu > cfg.unitCap + 0.5) {
+        overloadTrip = true;
+        hallStatus = "err";
+      }
+    }
+  });
+
+  if (overloadTrip) {
+    rackStatus.forEach(r => r.ok = false);
+    const maxKw = Math.max(...upsLoads);
+    msg = `CASCADE OVERLOAD TRIP: surviving UPS modules hit ${maxKw.toFixed(0)} kW (${((maxKw/cfg.unitCap)*100).toFixed(0)}% load), exceeding their 500 kW inverter rating and dropping the load!`;
+  } else if (hallStatus === "err") {
+    msg = "CRITICAL OUTAGE: one or more data hall rack zones have lost all energised distribution paths. Critical IT load dropped!";
+  } else if (upsState.some(s => s !== "ok") || pathState.some(s => s !== "ok")) {
+    hallStatus = "warn";
+    msg = "FAILOVER / MAINTENANCE ACTIVE: redundant capacity engaged. All critical IT racks remain 100% online with zero downtime.";
+  } else {
+    const sampleLoad = upsLoads[0] || 0;
+    msg = `SYSTEM NORMAL: all units and paths healthy. Each UPS module is carrying ${sampleLoad.toFixed(1)} kW (${((sampleLoad/cfg.unitCap)*100).toFixed(1)}% load).`;
+  }
+
+  return { upsLoads, pathLoads, rackStatus, hallStatus, overloadTrip, msg };
+}
+
+function render() {
+  const cfg = CONFIGS[currentKey];
+  const res = evaluateSystem();
+
+  document.getElementById("cfg-title").textContent = cfg.name;
+  document.getElementById("m-load").textContent = cfg.itLoad + " kW";
+  document.getElementById("m-n").textContent = `${cfg.nNeeded} (${cfg.nNeeded * cfg.unitCap} kW)`;
+  document.getElementById("m-cap").textContent = (cfg.ups.length * cfg.unitCap) + " kW";
+  document.getElementById("m-paths").textContent = cfg.paths.length + (cfg.paths.length === 1 ? " single path" : " paths");
+
+  const b = document.getElementById("banner");
+  b.className = "status-banner " + (res.hallStatus === "ok" ? "s-ok" : res.hallStatus === "warn" ? "s-warn" : "s-err");
+  document.getElementById("banner-txt").textContent = res.msg;
+
+  // Render UPS Control Cards
+  const uCont = document.getElementById("ups-container");
+  uCont.innerHTML = "";
+  cfg.ups.forEach((u, i) => {
+    const st = upsState[i];
+    const kw = res.upsLoads[i];
+    const pct = (kw / cfg.unitCap) * 100;
+    const isOver = pct > 100.1;
+    let cardCls = "online", badgeTxt = "ONLINE", badgeCls = "b-ok", barCol = "var(--green)";
+    if (st === "fault" || isOver) {
+      cardCls = "fault"; badgeTxt = isOver ? "OVERLOAD TRIP" : "FAULT TRIPPED"; badgeCls = "b-err"; barCol = "var(--red)";
+    } else if (st === "maint" || pathState[u.path] !== "ok") {
+      cardCls = "isolated"; badgeTxt = st === "maint" ? "ISOLATED" : "PATH OPEN"; badgeCls = "b-iso"; barCol = "var(--dead)";
+    } else if (pct >= 85) {
+      cardCls = "warn"; badgeTxt = "HIGH LOAD"; badgeCls = "b-warn"; barCol = "var(--amber)";
+    }
+
+    uCont.innerHTML += `
+      <div class="unit ${cardCls}">
+        <div class="unit-head"><span>${u.id}</span><span class="badge ${badgeCls}">${badgeTxt}</span></div>
+        <div style="font-size:0.78rem; color:var(--muted);">Output: <strong style="color:#fff;">${kw.toFixed(1)} kW</strong> (${pct.toFixed(1)}%)</div>
+        <div class="bar-bg"><div class="bar-fill" style="width:${Math.min(pct, 100)}%; background:${barCol};"></div></div>
+        <div class="btn-row">
+          <button class="btn ${st==='fault'?'active-fault':''}" onclick="toggleUps(${i},'fault')">Trip fault</button>
+          <button class="btn ${st==='maint'?'active-maint':''}" onclick="toggleUps(${i},'maint')">Isolate</button>
+        </div>
+      </div>`;
+  });
+
+  // Render Path Control Cards
+  const pCont = document.getElementById("path-container");
+  pCont.innerHTML = "";
+  cfg.paths.forEach((p, i) => {
+    const st = pathState[i];
+    const kw = res.pathLoads[i];
+    const live = st === "ok" && kw > 0 && !res.overloadTrip;
+    pCont.innerHTML += `
+      <div class="unit ${live ? 'online' : st !== 'ok' ? 'isolated' : 'fault'}">
+        <div class="unit-head"><span>${p.id}</span><span class="badge ${live?'b-ok':st!=='ok'?'b-iso':'b-err'}">${st==='ok'?(live?'ENERGISED':'DE-ENERGISED'):'LOCKED OUT'}</span></div>
+        <div style="font-size:0.78rem; color:var(--muted);">Busbar load: <strong style="color:#fff;">${live ? kw.toFixed(1) : '0.0'} kW</strong></div>
+        <div class="btn-row">
+          <button class="btn ${st!=='ok'?'active-maint':''}" onclick="togglePath(${i})">${st==='ok'?'Isolate / fault path':'Restore path'}</button>
+        </div>
+      </div>`;
+  });
+
+  document.getElementById("info-panel").innerHTML = `
+    <p><strong>First-principles coaching notes (${currentKey}):</strong></p>
+    <ul>${cfg.notes.map(n => `<li>${n}</li>`).join("")}</ul>`;
+
+  drawSCADA(cfg, res);
+}
+
+function drawBreaker(x, y, closed, col) {
+  if (closed) {
+    return `
+      <rect x="${x-5}" y="${y-7}" width="10" height="14" rx="2" fill="#07101e" stroke="${col}" stroke-width="1.8"/>
+      <line x1="${x}" y1="${y-7}" x2="${x}" y2="${y+7}" stroke="${col}" stroke-width="2"/>`;
+  } else {
+    return `
+      <circle cx="${x}" cy="${y-6}" r="2.2" fill="#ef4444"/>
+      <circle cx="${x}" cy="${y+6}" r="2.2" fill="#ef4444"/>
+      <line x1="${x}" y1="${y+6}" x2="${x+8}" y2="${y-5}" stroke="#ef4444" stroke-width="2.2"/>`;
+  }
+}
+
+function drawSCADA(cfg, res) {
+  const svg = document.getElementById("sld");
+  const W = 900;
+  let html = `
+    <defs>
+      <filter id="glow-green" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="4" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="glow-amber" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="4.5" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="glow-red" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="5" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>`;
+
+  const uCount = cfg.ups.length;
+  const pCount = cfg.paths.length;
+  const rCount = cfg.racks.length;
+
+  const upsX = cfg.ups.map((_, i) => (W / (uCount + 1)) * (i + 1));
+  const pathX = cfg.paths.map((_, i) => (W / (pCount + 1)) * (i + 1));
+  const rackX = cfg.racks.map((_, i) => (W / (rCount + 1)) * (i + 1));
+
+  const yUPS = 58;
+  const yBus = 225;
+  const yRack = 392;
+
+  // 1. Draw orthogonal feeder lines from UPS to Busbars
+  cfg.ups.forEach((u, i) => {
+    const ux = upsX[i];
+    const px = pathX[u.path];
+    const st = upsState[i];
+    const kw = res.upsLoads[i];
+    const pct = (kw / cfg.unitCap) * 100;
+    const isOver = pct > 100.1;
+    const isEnergised = st === "ok" && pathState[u.path] === "ok" && kw > 0 && !res.overloadTrip;
+
+    let col = "var(--dead)", glow = "", flowCls = "";
+    if (st === "fault" || isOver) {
+      col = "var(--red)"; glow = "url(#glow-red)";
+    } else if (isEnergised) {
+      col = pct >= 85 ? "var(--amber)" : "var(--green)";
+      glow = pct >= 85 ? "url(#glow-amber)" : "url(#glow-green)";
+      flowCls = pct >= 85 ? "flow-fast" : "flow-line";
+    }
+
+    const midY = 148 + (i % 2) * 8;
+    const pathD = `M ${ux} ${yUPS + 36} L ${ux} ${midY} L ${px} ${midY} L ${px} ${yBus - 28}`;
+
+    // Base wire
+    html += `<path d="${pathD}" fill="none" stroke="${isEnergised ? col : '#1e2c45'}" stroke-width="${isEnergised ? 3 : 2}" opacity="${isEnergised ? 0.45 : 0.7}"/>`;
+    // Animated glowing energy pulse overlay
+    if (isEnergised) {
+      html += `<path d="${pathD}" fill="none" stroke="${col}" stroke-width="3.2" filter="${glow}" class="${flowCls}"/>`;
+    }
+    // UPS Output Breaker (MOB)
+    html += drawBreaker(ux, yUPS + 52, st === "ok" && !isOver, isEnergised ? col : "#475569");
+  });
+
+  // 2. Draw orthogonal feeder lines from Busbars to Rack Zones
+  cfg.racks.forEach((r, rIdx) => {
+    const rx = rackX[rIdx];
+    r.feeds.forEach((pIdx, fPos) => {
+      const px = pathX[pIdx];
+      const offsetRx = r.feeds.length > 1 ? (fPos === 0 ? rx - 35 : rx + 35) : rx;
+      const pKw = res.pathLoads[pIdx];
+      const isLive = pathState[pIdx] === "ok" && pKw > 0 && !res.overloadTrip && res.rackStatus[rIdx].liveFeeds.includes(pIdx);
+
+      // Check if any UPS on this path is >85%
+      const highLoad = cfg.ups.some((u, ui) => u.path === pIdx && (res.upsLoads[ui] / cfg.unitCap) >= 0.85);
+      const col = isLive ? (highLoad ? "var(--amber)" : "var(--cyan)") : "#1e2c45";
+      const glow = isLive ? (highLoad ? "url(#glow-amber)" : "url(#glow-green)") : "";
+      const flowCls = isLive ? (highLoad ? "flow-fast" : "flow-line") : "";
+
+      const midY = 308 + (pIdx * 9);
+      const pathD = `M ${px} ${yBus + 28} L ${px} ${midY} L ${offsetRx} ${midY} L ${offsetRx} ${yRack - 34}`;
+
+      html += `<path d="${pathD}" fill="none" stroke="${col}" stroke-width="${isLive ? 3 : 2}" opacity="${isLive ? 0.45 : 0.7}"/>`;
+      if (isLive) {
+        html += `<path d="${pathD}" fill="none" stroke="${col}" stroke-width="3.2" filter="${glow}" class="${flowCls}"/>`;
+      }
+    });
+  });
+
+  // 3. Draw UPS Module Nodes
+  cfg.ups.forEach((u, i) => {
+    const ux = upsX[i];
+    const st = upsState[i];
+    const kw = res.upsLoads[i];
+    const pct = (kw / cfg.unitCap) * 100;
+    const isOver = pct > 100.1;
+    const isOnline = st === "ok" && pathState[u.path] === "ok" && !res.overloadTrip;
+
+    let col = "#334155", glow = "", statusTxt = "ISOLATED", pulseCls = "";
+    if (st === "fault" || isOver) {
+      col = "var(--red)"; glow = "url(#glow-red)"; statusTxt = isOver ? "OVERLOAD TRIP" : "FAULTED"; pulseCls = "fault-pulse";
+    } else if (isOnline && kw > 0) {
+      col = pct >= 85 ? "var(--amber)" : "var(--green)";
+      glow = pct >= 85 ? "url(#glow-amber)" : "url(#glow-green)";
+      statusTxt = `${kw.toFixed(0)} kW (${pct.toFixed(0)}%)`;
+    } else if (st === "ok") {
+      statusTxt = "STANDBY 0 kW";
+    }
+
+    const bw = 132, bh = 68;
+    const barW = Math.min(pct, 100) * 1.12;
+    html += `
+      <g class="${pulseCls}">
+        <rect x="${ux - bw/2}" y="${yUPS - bh/2}" width="${bw}" height="${bh}" rx="6" fill="#091324" stroke="${col}" stroke-width="2.2" filter="${glow}"/>
+        <circle cx="${ux - bw/2 + 13}" cy="${yUPS - 16}" r="4" fill="${col}"/>
+        <text x="${ux + 4}" y="${yUPS - 12}" fill="#fff" font-size="12" font-weight="700" text-anchor="middle">${u.id}</text>
+        <text x="${ux}" y="${yUPS + 6}" fill="${col}" font-size="11" font-weight="700" text-anchor="middle">${statusTxt}</text>
+        <rect x="${ux - 56}" y="${yUPS + 14}" width="112" height="6" rx="3" fill="#040811" stroke="#1e293b" stroke-width="1"/>
+        <rect x="${ux - 56}" y="${yUPS + 14}" width="${barW}" height="6" rx="3" fill="${col}"/>
+      </g>`;
+  });
+
+  // 4. Draw Busbar / Distribution Path Nodes (Dynamic width so text NEVER overruns)
+  cfg.paths.forEach((p, i) => {
+    const px = pathX[i];
+    const st = pathState[i];
+    const kw = res.pathLoads[i];
+    const isLive = st === "ok" && kw > 0 && !res.overloadTrip;
+    const highLoad = cfg.ups.some((u, ui) => u.path === i && (res.upsLoads[ui] / cfg.unitCap) >= 0.85);
+
+    let col = "#334155", glow = "";
+    if (st !== "ok") {
+      col = "#475569";
+    } else if (res.overloadTrip) {
+      col = "var(--red)"; glow = "url(#glow-red)";
+    } else if (isLive) {
+      col = highLoad ? "var(--amber)" : "var(--cyan)";
+      glow = highLoad ? "url(#glow-amber)" : "url(#glow-green)";
+    }
+
+    const line1 = `${p.id} — ${isLive ? kw.toFixed(0) + ' kW' : '0 kW'}`;
+    const line2 = st === "ok" ? p.sub : "LOCKED OUT / FAULTED";
+    const boxW = Math.max(215, Math.max(line1.length, line2.length) * 7.5 + 34);
+    const boxH = 54;
+
+    html += `
+      <g>
+        <!-- Busbar copper rail highlight -->
+        <line x1="${px - boxW/2 - 14}" y1="${yBus}" x2="${px + boxW/2 + 14}" y2="${yBus}" stroke="${col}" stroke-width="6" stroke-linecap="round" filter="${glow}"/>
+        <rect x="${px - boxW/2}" y="${yBus - boxH/2}" width="${boxW}" height="${boxH}" rx="6" fill="#0b1629" stroke="${col}" stroke-width="2.2" filter="${glow}"/>
+        <text x="${px}" y="${yBus - 5}" fill="#fff" font-size="12.5" font-weight="700" text-anchor="middle">${line1}</text>
+        <text x="${px}" y="${yBus + 14}" fill="${isLive ? col : '#94a3b8'}" font-size="10.5" font-weight="600" text-anchor="middle">${line2}</text>
+      </g>`;
+    html += drawBreaker(px, yBus + 39, st === "ok" && !res.overloadTrip, isLive ? col : "#475569");
+  });
+
+  // 5. Draw Data Hall Rack Zones & Dual-Corded PDU Inputs
+  cfg.racks.forEach((r, rIdx) => {
+    const rx = rackX[rIdx];
+    const rSt = res.rackStatus[rIdx];
+    const isOk = rSt.ok && !res.overloadTrip;
+    const onSingleFeed = isOk && r.feeds.length > 1 && rSt.liveFeeds.length === 1;
+
+    let col = "var(--green)", glow = "url(#glow-green)", statusTxt = `${r.kw.toFixed(0)} kW ONLINE`;
+    if (!isOk) {
+      col = "var(--red)"; glow = "url(#glow-red)"; statusTxt = "BLACKOUT (0 kW)";
+    } else if (onSingleFeed) {
+      col = "var(--amber)"; glow = "url(#glow-amber)"; statusTxt = `${r.kw.toFixed(0)} kW (SINGLE FEED ACTIVE)`;
+    }
+
+    const rw = Math.max(230, r.id.length * 7.5 + 40);
+    const rh = 64;
+
+    // Draw A/B PDU input pills on top of rack zone
+    if (r.feeds.length > 1) {
+      r.feeds.forEach((pIdx, fPos) => {
+        const ox = fPos === 0 ? rx - 35 : rx + 35;
+        const feedAlive = isOk && rSt.liveFeeds.includes(pIdx);
+        const fCol = feedAlive ? "var(--cyan)" : "var(--red)";
+        const fLbl = `PDU ${String.fromCharCode(65 + pIdx)}`;
+        html += `
+          <rect x="${ox - 26}" y="${yRack - rh/2 - 14}" width="52" height="15" rx="3" fill="#060d1a" stroke="${fCol}" stroke-width="1.5"/>
+          <text x="${ox}" y="${yRack - rh/2 - 3}" fill="${fCol}" font-size="9.5" font-weight="700" text-anchor="middle">${fLbl}</text>`;
+      });
+    }
+
+    html += `
+      <g class="${!isOk ? 'fault-pulse' : ''}">
+        <rect x="${rx - rw/2}" y="${yRack - rh/2}" width="${rw}" height="${rh}" rx="7" fill="#091324" stroke="${col}" stroke-width="2.4" filter="${glow}"/>
+        <text x="${rx}" y="${yRack - 6}" fill="#fff" font-size="12.5" font-weight="700" text-anchor="middle">${r.id}</text>
+        <text x="${rx}" y="${yRack + 14}" fill="${col}" font-size="11" font-weight="700" text-anchor="middle">${statusTxt}</text>
+      </g>`;
+  });
+
+  svg.innerHTML = html;
+}
+
+const QUIZZES = [
+  { q: "Scenario 1: The data hall IT load is 1000 kW. Each UPS module is rated at 500 kW. In the plant room you count 3 UPS modules all feeding 1 single distribution path to the racks.", ans: "N+1", exp: "Correct! Needed units N = 2 (1000 kW / 500 kW). Installed = 3 units on 1 path, so it is N+1. It survives 1 UPS failing, but does not survive path maintenance." },
+  { q: "Scenario 2: The data hall IT load is 1000 kW (needs two 500 kW modules). You count 4 UPS modules split across 2 completely separate A and B rooms feeding dual-corded servers.", ans: "2N", exp: "Spot on! Needed N = 2, installed = 4 across two independent paths (2 on A, 2 on B). This is 2N and survives a complete path failure or path maintenance." },
+  { q: "Scenario 3: The data hall IT load is 1000 kW (needs two 500 kW modules). You count 5 UPS modules split across Path A (3 modules) and Path B (2 modules).", ans: "2N+1", exp: "Exact match! 5 modules across two paths where N = 2 gives you 2N+1." },
+  { q: "Scenario 4: The data hall IT load is 1500 kW (needs three 500 kW modules). You count 5 UPS modules all paralleled onto a single shared busbar.", ans: "3N+2", exp: "Well done! Since the 1500 kW load requires N = 3 modules and you have 2 extra spare modules on that bus, you have 3N+2 (or N+2 where N=3)." }
+];
+let qIdx = 0;
+
+function showQuiz(btn) {
+  document.querySelectorAll(".tab").forEach(el => el.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById("sim-view").style.display = "none";
+  document.getElementById("quiz-view").style.display = "block";
+  loadQuiz();
+}
+
+function loadQuiz() {
+  const item = QUIZZES[qIdx];
+  document.getElementById("quiz-q-txt").textContent = item.q;
+  document.getElementById("quiz-feedback").textContent = "";
+  const bCont = document.getElementById("quiz-buttons");
+  bCont.innerHTML = "";
+  ["N", "N+1", "2N", "2N+1", "3N/2", "3N+2"].forEach(opt => {
+    const b = document.createElement("button");
+    b.className = "tab";
+    b.textContent = opt;
+    b.onclick = () => {
+      const fb = document.getElementById("quiz-feedback");
+      if (opt === item.ans) {
+        fb.style.color = "var(--green)";
+        fb.textContent = "✓ " + item.exp;
+      } else {
+        fb.style.color = "var(--red)";
+        fb.textContent = "✗ Not quite – work out N (installed vs needed) and count the paths first, then try again.";
+      }
+    };
+    bCont.appendChild(b);
+  });
+}
+
+function nextQuiz() {
+  qIdx = (qIdx + 1) % QUIZZES.length;
+  loadQuiz();
+}
+
+initTabs();
+resetState();
+</script>
+</body>
+</html>
